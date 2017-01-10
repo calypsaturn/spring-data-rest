@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package org.springframework.data.rest.webmvc.json;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
 
 import java.util.Collections;
 import java.util.List;
@@ -27,7 +28,11 @@ import org.springframework.data.annotation.Reference;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.keyvalue.core.mapping.context.KeyValueMappingContext;
 import org.springframework.data.mapping.context.PersistentEntities;
+import org.springframework.data.rest.core.annotation.RestResource;
+import org.springframework.data.rest.core.config.RepositoryRestConfiguration;
+import org.springframework.data.rest.core.mapping.PersistentEntitiesResourceMappings;
 import org.springframework.data.rest.webmvc.json.JacksonMappingAwareSortTranslator.SortTranslator;
+import org.springframework.data.rest.webmvc.mapping.Associations;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
@@ -57,7 +62,9 @@ public class SortTranslatorUnitTests {
 		mappingContext.getPersistentEntity(MultiUnwrapped.class);
 
 		persistentEntities = new PersistentEntities(Collections.singleton(mappingContext));
-		sortTranslator = new SortTranslator(persistentEntities, objectMapper);
+
+		sortTranslator = new SortTranslator(persistentEntities, objectMapper, new Associations(
+				new PersistentEntitiesResourceMappings(persistentEntities), mock(RepositoryRestConfiguration.class)));
 	}
 
 	/**
@@ -138,15 +145,27 @@ public class SortTranslatorUnitTests {
 	}
 
 	/**
-	 * @see DATAREST-910
+	 * @see DATAREST-910, DATAREST-976
 	 */
 	@Test
-	public void shouldSkipKnownAssociationProperties() {
+	public void shouldSkipLinkableAssociationProperties() {
+
+		Sort translatedSort = sortTranslator.translateSort(new Sort("association.name"),
+				mappingContext.getPersistentEntity(Plain.class));
+
+		assertThat(translatedSort, is(nullValue()));
+	}
+
+	/**
+	 * @see DATAREST-976
+	 */
+	@Test
+	public void shouldMapEmbeddableAssociationProperties() {
 
 		Sort translatedSort = sortTranslator.translateSort(new Sort("refEmbedded.name"),
 				mappingContext.getPersistentEntity(Plain.class));
 
-		assertThat(translatedSort, is(nullValue()));
+		assertThat(translatedSort.getOrderFor("refEmbedded.name"), is(notNullValue()));
 	}
 
 	/**
@@ -191,6 +210,7 @@ public class SortTranslatorUnitTests {
 		public String name;
 		public Embedded embedded;
 		@Reference public Embedded refEmbedded;
+		@Reference public AnotherRootEntity association;
 	}
 
 	static class UnwrapEmbedded {
@@ -222,4 +242,9 @@ public class SortTranslatorUnitTests {
 	}
 
 	static interface SomeInterface {}
+
+	@RestResource
+	static class AnotherRootEntity {
+		public String name;
+	}
 }
